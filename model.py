@@ -231,6 +231,8 @@ class ConditionedModel:
             seq_pt, seq_mask, seq_str, seq_str_mask,
             h_ini, k_ini, w_ini)
 
+        #seq_h = T.specify_shape(seq_h, (99,99,99))
+
         seq_h_conc = T.concatenate([seq_h, seq_w], axis=-1)
 
         loss, monitoring = self.mixture.apply(seq_h_conc, seq_mask, seq_tg)
@@ -241,7 +243,7 @@ class ConditionedModel:
         monitoring.extend(
             self.create_monitoring_variables(seq_h, seq_k, seq_w, seq_mask))
 
-        return loss, updates + scan_updates, monitoring
+        return loss, updates + scan_updates, monitoring, seq_h
 
     def prediction(self, pt_ini, seq_str, seq_str_mask,
                    h_ini, k_ini, w_ini, bias=.0, n_steps=10000):
@@ -288,7 +290,7 @@ class ConditionedModel:
             return ((pt, h, a, k, p, w, mask),
                     theano.scan_module.until(T.all(mask < 1.)))
 
-        (seq_pt, _, seq_a, seq_k, seq_p, seq_w, seq_mask), scan_updates = \
+        (seq_pt, seq_h, seq_a, seq_k, seq_p, seq_w, seq_mask), scan_updates = \
             theano.scan(
                 fn=scan_step,
                 outputs_info=[pt_ini, h_ini, None, k_ini, None, w_ini,
@@ -296,7 +298,7 @@ class ConditionedModel:
                 non_sequences=[seq_str, seq_str_mask, bias],
                 n_steps=n_steps)
 
-        return (seq_pt, seq_a, seq_k, seq_p, seq_w, seq_mask), scan_updates
+        return (seq_pt, seq_a, seq_k, seq_p, seq_w, seq_mask, seq_h), scan_updates
 
     def create_monitoring_variables(self, seq_h, seq_k, seq_w, seq_mask):
         """

@@ -16,6 +16,8 @@ from model import ConditionedModel
 from extensions import SamplerCond, SamplingFunctionSaver, ValMonitorHandwriting
 from utilities import create_train_tag_values, create_gen_tag_values
 
+from Discriminator import Discriminator
+
 floatX = theano.config.floatX = 'float32'
 # theano.config.optimizer = 'None'
 # theano.config.compute_test_value = 'raise'
@@ -50,11 +52,14 @@ char_dict, inv_char_dict = cPickle.load(open('char_dict.pkl', 'r'))
 # All the data is loaded in memory
 train_pt_seq, train_pt_idx, train_str_seq, train_str_idx = \
     load_data('hand_training.hdf5')
+
 train_batch_gen = create_generator(
     True, batch_size,
     train_pt_seq, train_pt_idx, train_str_seq, train_str_idx, chunk=chunk)
+
 valid_pt_seq, valid_pt_idx, valid_str_seq, valid_str_idx = \
     load_data('hand_training.hdf5')
+
 valid_batch_gen = create_generator(
     True, batch_size,
     valid_pt_seq, valid_pt_idx, valid_str_seq, valid_str_idx, chunk=chunk)
@@ -76,11 +81,20 @@ model = ConditionedModel(gain, n_hidden, n_chars, n_mixt_attention,
                          n_mixt_output)
 # Initial values of the variables that are transmitted through the recursion
 h_ini, k_ini, w_ini = model.create_shared_init_states(batch_size)
-loss, updates_ini, monitoring = model.apply(seq_pt, seq_pt_mask, seq_tg,
+loss, updates_ini, monitoring, seq_h_tf = model.apply(seq_pt, seq_pt_mask, seq_tg,
                                             seq_str, seq_str_mask,
                                             h_ini, k_ini, w_ini)
 loss.name = 'negll'
 
+#seq_h_tf = T.specify_shape(seq_h_tf, (994, 50, 400))
+
+
+########################
+#Teacher Forcing Disc  #
+#######################
+#Loss is loss.  
+#generator params is model.params
+#
 
 ########################
 # GRADIENT AND UPDATES #
@@ -109,9 +123,17 @@ pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias = \
 create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
                       bias, seq_str, seq_str_mask)  # for debug
 
-(pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen), updates_pred = \
+(pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen, seq_h_sampled), updates_pred = \
     model.prediction(pt_ini, seq_str, seq_str_mask,
                      h_ini_pred, k_ini_pred, w_ini_pred, bias=bias)
+
+#seq_h_sampled = T.specify_shape(seq_h_sampled, (99,99,99))
+
+discriminator = Discriminator(num_hidden = 400, num_features = 400, mb_size = 50, hidden_state_features = T.concatenate([seq_h_sampled, seq_h_tf], axis = 1), target = theano.shared(np.asarray([0] * 50 + [1] * 50).astype('int32')))
+
+train_pf = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,bias] + [seq_pt, seq_tg, seq_pt_mask], [T.mean(seq_h_sampled), T.mean(seq_h_tf), T.mean(discriminator.classification)], on_unused_input = 'ignore', updates = updates_pred)
+
+print "train pf compiled"
 
 f_sampling = theano.function(
     [pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,
@@ -140,7 +162,7 @@ sampling_saver = SamplingFunctionSaver(
     f_sampling, char_dict, apply_at_the_start=True)
 
 train_m = Trainer(train_monitor, train_batch_gen,
-                  [valid_monitor, sampler, sampling_saver], [])
+                  [valid_monitor, sampler, sampling_saver, sampler], [])
 
 
 ############
@@ -159,3 +181,9 @@ def custom_process_fun(generator_output):
 
 model.reset_shared_init_states(h_ini, k_ini, w_ini, batch_size)
 train_m.train(custom_process_fun)
+
+
+
+
+
+
