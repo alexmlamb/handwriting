@@ -52,9 +52,12 @@ class Discriminator:
         gru_params_2 = init_tparams(param_init_gru(None, {}, prefix = "gru2", dim = num_hidden, nin = num_hidden + num_features))
         gru_params_3 = init_tparams(param_init_gru(None, {}, prefix = "gru3", dim = num_hidden, nin = num_hidden + num_features))
 
+
         gru_1_out = gru_layer(gru_params_1, hidden_state_features, None, prefix = 'gru1')[0]
         gru_2_out = gru_layer(gru_params_2, T.concatenate([gru_1_out, hidden_state_features], axis = 2), None, prefix = 'gru2', backwards = True)[0]
         gru_3_out = gru_layer(gru_params_3, T.concatenate([gru_2_out, hidden_state_features], axis = 2), None, prefix = 'gru3')[0]
+
+        self.gru_1_out = gru_1_out
 
         final_out_recc = T.mean(gru_3_out, axis = 0)
 

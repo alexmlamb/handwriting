@@ -1,7 +1,8 @@
 import theano
 from theano import shared
 import theano.tensor as T
-from theano.tensor.shared_randomstreams import RandomStreams
+#from theano.tensor.shared_randomstreams import RandomStreams
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 import numpy as np
 from lasagne.init import GlorotNormal
@@ -267,7 +268,8 @@ class ConditionedModel:
         # Convert the integers representing chars into one-hot encodings
         # seq_str will have shape (seq_length, batch_size, n_chars)
         seq_str = T.eye(self.n_chars, dtype=floatX)[seq_str]
-        batch_size = pt_ini.shape[0]
+        #TODO: don't hardcode batch size
+        batch_size = 50#pt_ini.shape[0]
 
         def scan_step(pt_pre, h_pre, k_pre, w_pre, mask,
                       seq_str, seq_str_mask, bias):

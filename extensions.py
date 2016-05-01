@@ -1,7 +1,5 @@
-import os
 
 import theano
-import theano.tensor as T
 import numpy as np
 
 from raccoon import Extension
@@ -71,6 +69,8 @@ class SamplerCond(Extension):
 
         cond, cond_mask = char2int(self.sample_strings, self.dict_char2int)
 
+        #raise Exception("This is where pt_ini is being passed into f_sampling")
+
         pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen = self.f_sampling(
                 self.pt_ini_mat, cond, cond_mask,
                 self.h_ini_mat, self.k_ini_mat, self.w_ini_mat, self.bias_value)
@@ -81,10 +81,11 @@ class SamplerCond(Extension):
         p_gen = np.swapaxes(p_gen, 1, 2)
         mats = [(a_gen, 'alpha'), (k_gen, 'kapa'), (p_gen, 'phi'),
                 (w_gen, 'omega')]
-        plot_generated_sequences(
-            pt_gen, mats,
-            mask_gen, folder_path=self.folder_path,
-            file_name='{}_'.format(batch_id) + self.file_name)
+        #TODO:start plotting again
+        #plot_generated_sequences(
+        #    pt_gen, mats,
+        #    mask_gen, folder_path=self.folder_path,
+        #    file_name='{}_'.format(batch_id) + self.file_name)
 
         return ['executed']
 
