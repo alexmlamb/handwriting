@@ -47,6 +47,7 @@ def create_generator(shuffle, batch_size, seq_pt, pt_idx,
             n_chars = 81
             n_mixt_attention = 10
 
+            #TODO: don't hardcode.
             pt_ini_mat = np.zeros((n_samples, 3), floatX)
             h_ini_mat = np.zeros((n_samples, n_hidden), floatX)
             k_ini_mat = np.zeros((n_samples, n_mixt_attention), floatX)
@@ -54,14 +55,12 @@ def create_generator(shuffle, batch_size, seq_pt, pt_idx,
             bias = np.asarray(0.5).astype('float32')
 
             if not chunk:
-                print "NOT CHUNK!!!!"
                 yield (pt_input, pt_tg, pt_mask, str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), True
                 continue
 
             l_seq = pt_input.shape[0]
             for j in range(0, l_seq-chunk-1, chunk):
                 s = slice(j, j+chunk)
-                print "SLICE YIELD!!!"
                 yield (pt_input[s], pt_tg[s], pt_mask[s], str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), False
             s = slice(j + chunk, None)
 

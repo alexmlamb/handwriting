@@ -33,8 +33,9 @@ n_mixt_output = 20
 gain = 0.01
 batch_size = 50
 chunk = None
-train_freq_print = 100
-valid_freq_print = 1000
+#freqs were 100, 1000
+train_freq_print = 20
+valid_freq_print = 2
 sample_strings = ['Sous le pont Mirabeau coule la Seine.']*50
 algo = 'adam'  # adam, sgd
 
@@ -48,6 +49,8 @@ if not os.path.exists(dump_path):
 ########
 char_dict, inv_char_dict = cPickle.load(open('char_dict.pkl', 'r'))
 
+
+
 model = ConditionedModel(gain, n_hidden, n_chars, n_mixt_attention,
                          n_mixt_output)
 pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias = model.create_sym_init_states()
@@ -55,6 +58,7 @@ pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias = model.create_sym_init_states(
 # All the data is loaded in memory
 train_pt_seq, train_pt_idx, train_str_seq, train_str_idx = \
     load_data('hand_training.hdf5')
+
 
 train_batch_gen = create_generator(
     True, batch_size,
@@ -116,15 +120,15 @@ create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
 
 #seq_h_sampled = T.specify_shape(seq_h_sampled, (99,99,99))
 
-discriminator = Discriminator(num_hidden = 400, num_features = 400, mb_size = 50, hidden_state_features = T.concatenate([seq_h_sampled, seq_h_tf], axis = 1), target = theano.shared(np.asarray([0] * 50 + [1] * 50).astype('int32')))
+discriminator = Discriminator(num_hidden = 400,
+                              num_features = 400,
+                              mb_size = 50,
+                              hidden_state_features = T.concatenate([seq_h_sampled[:seq_h_tf.shape[0]], seq_h_tf[:seq_h_sampled.shape[0]]], axis = 1),
+                              target = theano.shared(np.asarray([0] * 50 + [1] * 50).astype('int32')))
 
 
 #print "compiling train_pf function"
 
-loss_pf = loss + T.mean(seq_h_sampled)
-grad_pf = T.grad(loss_pf, model.params)
-
-updates_pf = adam(grad_pf, model.params, 0.001)
 
 #train_pf = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,bias] + [seq_pt, seq_tg, seq_pt_mask], [loss + 0.0 * T.mean(seq_h_sampled) + 0.0 * T.mean(discriminator.classification)] + monitoring, on_unused_input = 'ignore', updates = updates_pred + updates_pf + updates_ini)
 
@@ -134,10 +138,9 @@ updates_pf = adam(grad_pf, model.params, 0.001)
 
 #raise Exception("DONE")
 
-f_sampling = theano.function(
-    [pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,
-     bias], [pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen],
-    updates=updates_pred)
+f_sampling = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,bias],
+                             [pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen],
+                             updates=updates_pred)
 
 ########################
 # GRADIENT AND UPDATES #
@@ -175,15 +178,27 @@ print "type", type(updates_all)
 
 #print "compiled train pf"
 
+seq_h_val = T.mean(seq_h_sampled)
+disc_class_val = T.mean(discriminator.classification)
+
+seq_h_val.name = "seq_h_val"
+disc_class_val.name = "disc_class_val"
+
 train_monitor = TrainMonitor(
     train_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias],
-    [loss + 0.0 * T.mean(seq_h_sampled) + 0.0 * T.mean(discriminator.classification)] + monitoring, updates_all)
+    [loss, seq_h_val, disc_class_val] + monitoring, updates_all)
+
 
 valid_monitor = ValMonitorHandwriting(
-    'Validation', valid_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str,
-                                     seq_str_mask], [loss] + monitoring,
+    'Validation', valid_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias], [loss] + monitoring,
     valid_batch_gen, updates_ini, model, h_ini, k_ini, w_ini, batch_size,
     apply_at_the_start=False)
+
+#valid_monitor = ValMonitorHandwriting(
+#    'Validation', valid_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str,
+#                                     seq_str_mask], [loss] + monitoring,
+#    valid_batch_gen, updates_ini, model, h_ini, k_ini, w_ini, batch_size,
+#    apply_at_the_start=False)
 
 
 sampler = SamplerCond('sampler', train_freq_print, dump_path, 'essai',
@@ -214,9 +229,3 @@ def custom_process_fun(generator_output):
 
 model.reset_shared_init_states(h_ini, k_ini, w_ini, batch_size)
 train_m.train(custom_process_fun)
-
-
-
-
-
-
