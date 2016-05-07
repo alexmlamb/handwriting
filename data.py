@@ -23,7 +23,7 @@ def load_data(filename='hand_training.hdf5'):
 
 
 def create_generator(shuffle, batch_size, seq_pt, pt_idx,
-                     seq_strings, strings_idx, chunk=None):
+                     seq_strings, strings_idx, bias_value, chunk=None):
     n_seq = pt_idx.shape[0]
 
     if shuffle:
@@ -52,7 +52,7 @@ def create_generator(shuffle, batch_size, seq_pt, pt_idx,
             h_ini_mat = np.zeros((n_samples, n_hidden), floatX)
             k_ini_mat = np.zeros((n_samples, n_mixt_attention), floatX)
             w_ini_mat = np.zeros((n_samples, n_chars), floatX)
-            bias = np.asarray(0.5).astype('float32')
+            bias = np.asarray(bias_value).astype('float32')
 
             if not chunk:
                 yield (pt_input, pt_tg, pt_mask, str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), True

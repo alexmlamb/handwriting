@@ -78,9 +78,9 @@ class Discriminator:
         p_real =  classification[0:mb_size]
         p_gen  = classification[mb_size:mb_size*2]
 
-        self.d_cost_real = bce(p_real, 0.9 * T.ones(p_real.shape)).mean()
-        self.d_cost_gen = bce(p_gen, 0.1 + T.zeros(p_gen.shape)).mean()
-        self.g_cost_d = bce(p_gen, 0.9 * T.ones(p_gen.shape)).mean()
+        self.d_cost_real = bce(p_real, 0.99 * T.ones(p_real.shape)).mean()
+        self.d_cost_gen = bce(p_gen, 0.01 + T.zeros(p_gen.shape)).mean()
+        self.g_cost_d = bce(p_gen, 0.99 * T.ones(p_gen.shape)).mean()
         self.d_cost = self.d_cost_real + self.d_cost_gen
         self.g_cost = self.g_cost_d
 

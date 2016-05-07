@@ -29,7 +29,7 @@ floatX = theano.config.floatX = 'float32'
 # CONFIG #
 ##########
 learning_rate = 0.1
-generator_lr = 0.1
+generator_lr = 1.0
 
 print "generator lr", generator_lr
 
@@ -41,12 +41,14 @@ gain = 0.01
 batch_size = 50
 chunk = None
 #freqs were 100, 1000, 10 ,200
-train_freq_print = 10
-valid_freq_print = 200
+train_freq_print = 20
+valid_freq_print = 1000
 sample_strings = ['Sous le pont Mirabeau coule la Seine.']*50
 algo = 'adam'  # adam, sgd
 
-dump_path = os.path.join(os.environ.get('TMP_PATH'), 'handwriting',str(np.random.randint(0, 100000000, 1)[0]))
+exp_id = np.random.randint(0, 100000000, 1)[0]
+
+dump_path = os.path.join(os.environ.get('TMP_PATH'), 'handwriting',str(exp_id))
 
 os.makedirs(dump_path)
 
@@ -75,14 +77,14 @@ train_pt_seq, train_pt_idx, train_str_seq, train_str_idx = \
 
 train_batch_gen = create_generator(
     True, batch_size,
-    train_pt_seq, train_pt_idx, train_str_seq, train_str_idx, chunk=chunk)
+    train_pt_seq, train_pt_idx, train_str_seq, train_str_idx, bias_value = 0.0, chunk=chunk)
 
 valid_pt_seq, valid_pt_idx, valid_str_seq, valid_str_idx = \
     load_data('hand_training.hdf5')
 
 valid_batch_gen = create_generator(
     True, batch_size,
-    valid_pt_seq, valid_pt_idx, valid_str_seq, valid_str_idx, chunk=chunk)
+    valid_pt_seq, valid_pt_idx, valid_str_seq, valid_str_idx, bias_value = 0.0, chunk=chunk)
 
 ##################
 # MODEL CREATION #
@@ -132,11 +134,11 @@ create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
                      h_ini_pred, k_ini_pred, w_ini_pred, bias=bias)
 
 
-discriminator = Discriminator(num_hidden = 800,
+discriminator = Discriminator(num_hidden = 400,
                               num_features = 400,
                               mb_size = batch_size,
                               hidden_state_features = T.concatenate([seq_h_sampled[:seq_h_tf.shape[0]], seq_h_tf[:seq_h_sampled.shape[0]]], axis = 1),
-                              target = theano.shared(np.asarray([0] * batch_size + [1] * batch_size).astype('int32')))
+                              target = theano.shared(np.asarray([1] * batch_size + [0] * batch_size).astype('int32')))
 
 
 
@@ -191,10 +193,10 @@ sampled_h_len.name = "sampled sequence length"
 tf_h_len = seq_h_tf.shape[0]
 tf_h_len.name = "tf sequence length"
 
-classification_real = T.mean(discriminator.classification[batch_size:])
+classification_real = T.mean(discriminator.classification[:batch_size])
 classification_real.name = "p(real)"
 
-classification_fake = T.mean(discriminator.classification[0:batch_size])
+classification_fake = T.mean(discriminator.classification[batch_size:])
 classification_fake.name = "p(fake)"
 
 len_c_real = discriminator.classification[batch_size:].shape[0]
@@ -203,10 +205,12 @@ len_c_real.name = "len_c_real"
 len_c_fake = discriminator.classification[0:batch_size].shape[0]
 len_c_fake.name = "len_c_fake"
 
+exp_id_shared = theano.shared(exp_id)
+exp_id_shared.name = "experiment id"
+
 train_monitor = TrainMonitor(
     train_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias],
-    [loss, sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake] + monitoring, updates_all)
-
+    [loss, sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared] + monitoring, updates_all)
 
 
 valid_monitor = ValMonitorHandwriting(
@@ -221,17 +225,24 @@ valid_monitor = ValMonitorHandwriting(
 #    apply_at_the_start=False)
 
 
-sampler = SamplerCond('sampler', train_freq_print, dump_path, 'essai',
+sampler = SamplerCond('sampler', train_freq_print, dump_path, 'essai_halfbias',
                       model, f_sampling, sample_strings,
                       dict_char2int=char_dict, bias_value=0.5)
+
+sampler_0bias = SamplerCond('sampler', train_freq_print, dump_path, 'essai_0bias',
+                      model, f_sampling, sample_strings,
+                      dict_char2int=char_dict, bias_value=0.0)
+
+sampler_2bias = SamplerCond('sampler', train_freq_print, dump_path, 'essai_2bias',
+                      model, f_sampling, sample_strings,
+                      dict_char2int=char_dict, bias_value=2.0)
 
 sampling_saver = SamplingFunctionSaver(
     valid_monitor, loss, valid_freq_print, dump_path, 'f_sampling', model,
     f_sampling, char_dict, apply_at_the_start=True)
 
 train_m = Trainer(train_monitor, train_batch_gen,
-                  [valid_monitor, sampling_saver, sampler], [])
-
+                  [valid_monitor, sampling_saver, sampler, sampler_0bias, sampler_2bias], [])
 
 ############
 # TRAINING #
@@ -249,3 +260,5 @@ def custom_process_fun(generator_output):
 
 model.reset_shared_init_states(h_ini, k_ini, w_ini, batch_size)
 train_m.train(custom_process_fun)
+
+
