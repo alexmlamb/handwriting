@@ -158,7 +158,7 @@ class UnconditionedModel:
 
         return loss, [(h_ini, seq_h[-1])] + scan_updates, monitoring
 
-    def prediction(self, pt_ini, h_ini, bias=.0, n_steps=500):
+    def prediction(self, pt_ini, h_ini, bias=.0, n_steps=1000):
 
         def gru_step(pt_pre, h_pre):
 
@@ -247,7 +247,7 @@ class ConditionedModel:
         return loss, updates + scan_updates, monitoring, seq_h
 
     def prediction(self, pt_ini, seq_str, seq_str_mask,
-                   h_ini, k_ini, w_ini, bias=.0, n_steps=10000):
+                   h_ini, k_ini, w_ini, bias=.0, n_steps=1000):
         """
         Parameters
         ----------
@@ -269,7 +269,7 @@ class ConditionedModel:
         # seq_str will have shape (seq_length, batch_size, n_chars)
         seq_str = T.eye(self.n_chars, dtype=floatX)[seq_str]
         #TODO: don't hardcode batch size
-        batch_size = 50#pt_ini.shape[0]
+        batch_size = 50 #pt_ini.shape[0]
 
         def scan_step(pt_pre, h_pre, k_pre, w_pre, mask,
                       seq_str, seq_str_mask, bias):

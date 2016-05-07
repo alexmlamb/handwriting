@@ -64,7 +64,6 @@ def create_generator(shuffle, batch_size, seq_pt, pt_idx,
                 yield (pt_input[s], pt_tg[s], pt_mask[s], str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), False
             s = slice(j + chunk, None)
 
-            print "GETTING DATA ITERATOR"
 
             yield (pt_input[s], pt_tg[s], pt_mask[s], str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), True
 

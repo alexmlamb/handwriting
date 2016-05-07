@@ -6,6 +6,8 @@ import numpy as np
 import theano
 import theano.tensor as T
 
+import shutil
+
 from raccoon.trainer import Trainer
 from raccoon.extensions import TrainMonitor
 from raccoon.layers.utils import clip_norm_gradients
@@ -17,6 +19,7 @@ from utilities import create_train_tag_values, create_gen_tag_values
 
 from Discriminator import Discriminator
 
+theano.config.scan.allow_gc = True
 floatX = theano.config.floatX = 'float32'
 # theano.config.optimizer = 'None'
 # theano.config.compute_test_value = 'raise'
@@ -26,6 +29,10 @@ floatX = theano.config.floatX = 'float32'
 # CONFIG #
 ##########
 learning_rate = 0.1
+generator_lr = 0.1
+
+print "generator lr", generator_lr
+
 n_hidden = 400
 n_chars = 81
 n_mixt_attention = 10
@@ -33,16 +40,22 @@ n_mixt_output = 20
 gain = 0.01
 batch_size = 50
 chunk = None
-#freqs were 100, 1000
-train_freq_print = 20
-valid_freq_print = 2
+#freqs were 100, 1000, 10 ,200
+train_freq_print = 10
+valid_freq_print = 200
 sample_strings = ['Sous le pont Mirabeau coule la Seine.']*50
 algo = 'adam'  # adam, sgd
 
 dump_path = os.path.join(os.environ.get('TMP_PATH'), 'handwriting',str(np.random.randint(0, 100000000, 1)[0]))
 
-if not os.path.exists(dump_path):
-    os.makedirs(dump_path)
+os.makedirs(dump_path)
+
+os.mkdir(dump_path + "/src")
+shutil.copyfile("main_cond.py", dump_path + "/src/main_cond.py")
+shutil.copyfile("Discriminator.py", dump_path + "/src/Discriminator.py")
+
+print "DUMP PATH", dump_path
+
 
 ########
 # DATA #
@@ -118,25 +131,14 @@ create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
     model.prediction(pt_ini, seq_str, seq_str_mask,
                      h_ini_pred, k_ini_pred, w_ini_pred, bias=bias)
 
-#seq_h_sampled = T.specify_shape(seq_h_sampled, (99,99,99))
 
-discriminator = Discriminator(num_hidden = 400,
+discriminator = Discriminator(num_hidden = 800,
                               num_features = 400,
-                              mb_size = 50,
+                              mb_size = batch_size,
                               hidden_state_features = T.concatenate([seq_h_sampled[:seq_h_tf.shape[0]], seq_h_tf[:seq_h_sampled.shape[0]]], axis = 1),
-                              target = theano.shared(np.asarray([0] * 50 + [1] * 50).astype('int32')))
+                              target = theano.shared(np.asarray([0] * batch_size + [1] * batch_size).astype('int32')))
 
 
-#print "compiling train_pf function"
-
-
-#train_pf = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,bias] + [seq_pt, seq_tg, seq_pt_mask], [loss + 0.0 * T.mean(seq_h_sampled) + 0.0 * T.mean(discriminator.classification)] + monitoring, on_unused_input = 'ignore', updates = updates_pred + updates_pf + updates_ini)
-
-#train_pf = theano.function([seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias], [loss + 0.0 * T.mean(seq_h_sampled) + 0.0 * T.mean(discriminator.classification)] + monitoring, on_unused_input = 'ignore', updates = updates_pred + updates_pf + updates_ini)
-
-#print "compiled train_pf function"
-
-#raise Exception("DONE")
 
 f_sampling = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,bias],
                              [pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen],
@@ -149,11 +151,16 @@ f_sampling = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_p
 
 params = model.params
 
-loss_update = loss + T.mean(discriminator.classification)
+loss_update = loss + generator_lr * discriminator.g_cost
 
 print "params", params
 grads = T.grad(loss_update, params)
 grads = clip_norm_gradients(grads)
+
+grads_disc = T.grad(discriminator.d_cost, discriminator.params)
+grads_disc = clip_norm_gradients(grads_disc)
+
+updates_disc = adam(grads_disc, discriminator.params, 0.0001)
 
 if algo == 'adam':
     updates_params = adam(grads, params, 0.0003)
@@ -164,7 +171,7 @@ elif algo == 'sgd':
 else:
     raise ValueError('Specified algo does not exist')
 
-updates_all = updates_ini + updates_params + updates_pred
+updates_all = updates_ini + updates_params + updates_pred + updates_disc
 
 print "type", type(updates_all)
 
@@ -178,15 +185,28 @@ print "type", type(updates_all)
 
 #print "compiled train pf"
 
-seq_h_val = T.mean(seq_h_sampled)
-disc_class_val = T.mean(discriminator.classification)
+sampled_h_len = seq_h_sampled.shape[0]
+sampled_h_len.name = "sampled sequence length"
 
-seq_h_val.name = "seq_h_val"
-disc_class_val.name = "disc_class_val"
+tf_h_len = seq_h_tf.shape[0]
+tf_h_len.name = "tf sequence length"
+
+classification_real = T.mean(discriminator.classification[batch_size:])
+classification_real.name = "p(real)"
+
+classification_fake = T.mean(discriminator.classification[0:batch_size])
+classification_fake.name = "p(fake)"
+
+len_c_real = discriminator.classification[batch_size:].shape[0]
+len_c_real.name = "len_c_real"
+
+len_c_fake = discriminator.classification[0:batch_size].shape[0]
+len_c_fake.name = "len_c_fake"
 
 train_monitor = TrainMonitor(
     train_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias],
-    [loss, seq_h_val, disc_class_val] + monitoring, updates_all)
+    [loss, sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake] + monitoring, updates_all)
+
 
 
 valid_monitor = ValMonitorHandwriting(
@@ -210,7 +230,7 @@ sampling_saver = SamplingFunctionSaver(
     f_sampling, char_dict, apply_at_the_start=True)
 
 train_m = Trainer(train_monitor, train_batch_gen,
-                  [valid_monitor, sampler, sampling_saver], [])
+                  [valid_monitor, sampling_saver, sampler], [])
 
 
 ############

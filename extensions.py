@@ -82,10 +82,18 @@ class SamplerCond(Extension):
         mats = [(a_gen, 'alpha'), (k_gen, 'kapa'), (p_gen, 'phi'),
                 (w_gen, 'omega')]
         #TODO:start plotting again
-        #plot_generated_sequences(
-        #    pt_gen, mats,
-        #    mask_gen, folder_path=self.folder_path,
-        #    file_name='{}_'.format(batch_id) + self.file_name)
+
+        #print "pt gen shape", pt_gen.shape
+        #print "mats shape", mats.shape
+
+        print "mats len", len(mats)
+
+        pt_gen = pt_gen[:,:4,:]
+
+        plot_generated_sequences(
+            pt_gen, mats,
+            mask_gen, folder_path=self.folder_path,
+            file_name='{}_'.format(batch_id) + self.file_name)
 
         return ['executed']
 
