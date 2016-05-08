@@ -29,7 +29,7 @@ floatX = theano.config.floatX = 'float32'
 # CONFIG #
 ##########
 learning_rate = 0.1
-generator_lr = 1.0
+generator_lr = 0.0
 
 print "generator lr", generator_lr
 
@@ -134,7 +134,7 @@ create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
                      h_ini_pred, k_ini_pred, w_ini_pred, bias=bias)
 
 
-discriminator = Discriminator(num_hidden = 400,
+discriminator = Discriminator(num_hidden = 800,
                               num_features = 400,
                               mb_size = batch_size,
                               hidden_state_features = T.concatenate([seq_h_sampled[:seq_h_tf.shape[0]], seq_h_tf[:seq_h_sampled.shape[0]]], axis = 1),
@@ -208,9 +208,12 @@ len_c_fake.name = "len_c_fake"
 exp_id_shared = theano.shared(exp_id)
 exp_id_shared.name = "experiment id"
 
+generator_lr_shared = theano.shared(generator_lr)
+generator_lr_shared.name = "generator lr"
+
 train_monitor = TrainMonitor(
     train_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias],
-    [loss, sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared] + monitoring, updates_all)
+    [loss, sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared, generator_lr_shared] + monitoring, updates_all)
 
 
 valid_monitor = ValMonitorHandwriting(

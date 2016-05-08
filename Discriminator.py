@@ -48,6 +48,8 @@ class Discriminator:
         self.mb_size = mb_size
         #self.seq_length = seq_length
 
+        hidden_state_features = dropout(hidden_state_features)
+
         gru_params_1 = init_tparams(param_init_gru(None, {}, prefix = "gru1", dim = num_hidden, nin = num_features))
         gru_params_2 = init_tparams(param_init_gru(None, {}, prefix = "gru2", dim = num_hidden, nin = num_hidden + num_features))
         gru_params_3 = init_tparams(param_init_gru(None, {}, prefix = "gru3", dim = num_hidden, nin = num_hidden + num_features))
@@ -66,9 +68,9 @@ class Discriminator:
         h_out_3 = DenseLayer((mb_size*2, num_hidden), num_units = num_hidden, nonlinearity=lasagne.nonlinearities.rectify)
         h_out_4 = DenseLayer((mb_size*2, num_hidden), num_units = 1, nonlinearity=None)
 
-        h_out_1_value = h_out_1.get_output_for(final_out_recc)
-        h_out_2_value = h_out_2.get_output_for(h_out_1_value)
-        h_out_3_value = h_out_3.get_output_for(h_out_2_value)
+        h_out_1_value = dropout(h_out_1.get_output_for(final_out_recc))
+        h_out_2_value = dropout(h_out_2.get_output_for(h_out_1_value))
+        h_out_3_value = dropout(h_out_3.get_output_for(h_out_2_value))
         h_out_4_value = h_out_4.get_output_for(h_out_3_value)
 
         raw_y = h_out_4_value#T.clip(h_out_4_value, -10.0, 10.0)
