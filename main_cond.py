@@ -56,7 +56,8 @@ algo = 'adam'  # adam, sgd
 
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/71535347/saved_model.pkl"
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/81356894/saved_model.pkl"
-model_file_load = "/u/lambalex/models/handwriting/handwriting/10406114/saved_model.pkl"
+#model_file_load = "/u/lambalex/models/handwriting/handwriting/10406114/saved_model.pkl"
+model_file_load = "saved_model.pkl"
 
 exp_id = np.random.randint(0, 100000000, 1)[0]
 
