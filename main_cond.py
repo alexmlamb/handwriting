@@ -6,6 +6,8 @@ import numpy as np
 import theano
 import theano.tensor as T
 
+from consider_constant import consider_constant
+
 import shutil
 
 from raccoon.trainer import Trainer
@@ -16,6 +18,12 @@ from data import create_generator, load_data
 from model import ConditionedModel
 from extensions import SamplerCond, SamplingFunctionSaver, ValMonitorHandwriting
 from utilities import create_train_tag_values, create_gen_tag_values
+
+import cPickle as pickle
+
+import sys
+
+sys.setrecursionlimit(1000000)
 
 from Discriminator import Discriminator
 
@@ -42,9 +50,13 @@ batch_size = 50
 chunk = None
 #freqs were 100, 1000, 10 ,200
 train_freq_print = 20
-valid_freq_print = 1000
-sample_strings = ['Sous le pont Mirabeau coule la Seine.']*50
+valid_freq_print = 40
+sample_strings = ['I am Alex Lamb.  I love the neural nets'] * 50#['Sous le pont Mirabeau coule la Seine.']*50
 algo = 'adam'  # adam, sgd
+
+#model_file_load = "/u/lambalex/models/handwriting/handwriting/71535347/saved_model.pkl"
+#model_file_load = "/u/lambalex/models/handwriting/handwriting/81356894/saved_model.pkl"
+model_file_load = "/u/lambalex/models/handwriting/handwriting/10406114/saved_model.pkl"
 
 exp_id = np.random.randint(0, 100000000, 1)[0]
 
@@ -56,8 +68,9 @@ os.mkdir(dump_path + "/src")
 shutil.copyfile("main_cond.py", dump_path + "/src/main_cond.py")
 shutil.copyfile("Discriminator.py", dump_path + "/src/Discriminator.py")
 
-print "DUMP PATH", dump_path
+model_file_save = dump_path + "/saved_model.pkl"
 
+print "DUMP PATH", dump_path
 
 ########
 # DATA #
@@ -65,9 +78,15 @@ print "DUMP PATH", dump_path
 char_dict, inv_char_dict = cPickle.load(open('char_dict.pkl', 'r'))
 
 
-
-model = ConditionedModel(gain, n_hidden, n_chars, n_mixt_attention,
+if model_file_load is None:
+    model = ConditionedModel(gain, n_hidden, n_chars, n_mixt_attention,
                          n_mixt_output)
+else:
+    print "Loading model file", model_file_load
+    fh = open(model_file_load, "r")
+    model = pickle.load(fh)
+    fh.close()
+
 pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias = model.create_sym_init_states()
 
 # All the data is loaded in memory
@@ -103,6 +122,8 @@ create_train_tag_values(seq_pt, seq_str, seq_tg, seq_pt_mask,
 #                         n_mixt_output)
 # Initial values of the variables that are transmitted through the recursion
 h_ini, k_ini, w_ini = model.create_shared_init_states(batch_size)
+
+
 loss, updates_ini, monitoring, seq_h_tf = model.apply(seq_pt, seq_pt_mask, seq_tg,
                                             seq_str, seq_str_mask,
                                             h_ini, k_ini, w_ini)
@@ -137,7 +158,7 @@ create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
 discriminator = Discriminator(num_hidden = 800,
                               num_features = 400,
                               mb_size = batch_size,
-                              hidden_state_features = T.concatenate([seq_h_sampled[:seq_h_tf.shape[0]], seq_h_tf[:seq_h_sampled.shape[0]]], axis = 1),
+                              hidden_state_features = T.concatenate([seq_h_sampled[:seq_h_tf.shape[0]], consider_constant(seq_h_tf[:seq_h_sampled.shape[0]])], axis = 1),
                               target = theano.shared(np.asarray([1] * batch_size + [0] * batch_size).astype('int32')))
 
 
@@ -162,7 +183,7 @@ grads = clip_norm_gradients(grads)
 grads_disc = T.grad(discriminator.d_cost, discriminator.params)
 grads_disc = clip_norm_gradients(grads_disc)
 
-updates_disc = adam(grads_disc, discriminator.params, 0.0001)
+updates_disc = adam(grads_disc, discriminator.params, 0.0001, beta1 = 0.5)
 
 if algo == 'adam':
     updates_params = adam(grads, params, 0.0003)
@@ -205,16 +226,26 @@ len_c_real.name = "len_c_real"
 len_c_fake = discriminator.classification[0:batch_size].shape[0]
 len_c_fake.name = "len_c_fake"
 
-exp_id_shared = theano.shared(exp_id)
+print "EXPERIMENT ID", exp_id
+exp_id_shared = theano.shared(np.asarray(exp_id).astype('int32'))
 exp_id_shared.name = "experiment id"
 
 generator_lr_shared = theano.shared(generator_lr)
 generator_lr_shared.name = "generator lr"
 
+mean_diff = ((seq_h_sampled[-1].mean(0) - seq_h_tf[-1].mean(0))**2).sum()
+mean_diff.name = "Sampled-TF Mean Diff"
+
+std_diff = ((seq_h_sampled[-1].std(0) - seq_h_tf[-1].std(0))**2).sum()
+std_diff.name = "Sampled-TF Var Diff"
+
+#[sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared, generator_lr_shared, mean_diff, std_diff]
+
 train_monitor = TrainMonitor(
     train_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias],
-    [loss, sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared, generator_lr_shared] + monitoring, updates_all)
+    [loss] + [sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared, generator_lr_shared, mean_diff, std_diff] + monitoring, updates_all)
 
+    #use updates_all
 
 valid_monitor = ValMonitorHandwriting(
     'Validation', valid_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias], [loss] + monitoring,
@@ -245,7 +276,7 @@ sampling_saver = SamplingFunctionSaver(
     f_sampling, char_dict, apply_at_the_start=True)
 
 train_m = Trainer(train_monitor, train_batch_gen,
-                  [valid_monitor, sampling_saver, sampler, sampler_0bias, sampler_2bias], [])
+                  [valid_monitor, sampling_saver, sampler, sampler_0bias, sampler_2bias], [], num_iterations = 40)
 
 ############
 # TRAINING #
@@ -261,7 +292,17 @@ def custom_process_fun(generator_output):
 
     return res
 
+
 model.reset_shared_init_states(h_ini, k_ini, w_ini, batch_size)
-train_m.train(custom_process_fun)
+
+while True:
+    #model.reset_shared_init_states(h_ini, k_ini, w_ini, batch_size)
+    train_m.train(custom_process_fun)
+    print "saving training function"
+    print dump_path
+    fh = open(model_file_save, "w")
+    pickle.dump(model, fh)
+    fh.close()
+
 
 

@@ -207,6 +207,7 @@ class ConditionedModel:
 
         self.params = self.pos_layer.params + self.mixture.params
 
+
     def apply(self, seq_pt, seq_mask, seq_tg, seq_str, seq_str_mask,
               h_ini, k_ini, w_ini):
         """
