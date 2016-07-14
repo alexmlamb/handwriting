@@ -19,6 +19,8 @@ from model import ConditionedModel
 from extensions import SamplerCond, SamplingFunctionSaver, ValMonitorHandwriting
 from utilities import create_train_tag_values, create_gen_tag_values
 
+from collections import OrderedDict
+
 import cPickle as pickle
 
 import sys
@@ -37,6 +39,7 @@ floatX = theano.config.floatX = 'float32'
 # CONFIG #
 ##########
 learning_rate = 0.1
+#generator_lr = 0.01
 generator_lr = 0.0
 
 print "generator lr", generator_lr
@@ -50,28 +53,43 @@ batch_size = 50
 chunk = None
 #freqs were 100, 1000, 10 ,200
 train_freq_print = 20
-valid_freq_print = 40
-sample_strings = ['I am Alex Lamb.  I love the neural nets'] * 50#['Sous le pont Mirabeau coule la Seine.']*50
+valid_freq_print = 500
+sample_strings = ['i am alien lamp and i love the neural nets'] * 50#['Sous le pont Mirabeau coule la Seine.']*50
 algo = 'adam'  # adam, sgd
 
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/71535347/saved_model.pkl"
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/81356894/saved_model.pkl"
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/10406114/saved_model.pkl"
-model_file_load = "saved_model.pkl"
+#model_file_load = "saved_model.pkl"
+#model_file_load = "/u/lambalex/models/handwriting/handwriting/33757048/saved_model.pkl"
+#model_file_load = None
+#model_file_load = "/u/lambalex/models/handwriting/handwriting/90207341/saved_model.pkl"
+model_file_load = "/u/lambalex/models/handwriting/handwriting/11151138/saved_model.pkl"
+
+num_steps_sample = T.iscalar('num_steps_sample')
 
 exp_id = np.random.randint(0, 100000000, 1)[0]
 
 dump_path = os.path.join(os.environ.get('TMP_PATH'), 'handwriting',str(exp_id))
 
-os.makedirs(dump_path)
+os.umask(055)
 
-os.mkdir(dump_path + "/src")
+os.makedirs(dump_path, 0777)
+
+os.makedirs(dump_path + "/src", 0777)
+os.chmod(dump_path, 0o777)
+
+fh = open(dump_path + "/derpy_file.txt", "w")
+fh.write("DERP DERP DERP DERP")
+fh.close()
+
 shutil.copyfile("main_cond.py", dump_path + "/src/main_cond.py")
 shutil.copyfile("Discriminator.py", dump_path + "/src/Discriminator.py")
 
 model_file_save = dump_path + "/saved_model.pkl"
 
 print "DUMP PATH", dump_path
+
 
 ########
 # DATA #
@@ -87,6 +105,8 @@ else:
     fh = open(model_file_load, "r")
     model = pickle.load(fh)
     fh.close()
+
+model.num_steps_sample = num_steps_sample
 
 pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias = model.create_sym_init_states()
 
@@ -117,7 +137,6 @@ seq_pt_mask = T.matrix('pt_mask', floatX)
 seq_str_mask = T.matrix('str_mask', floatX)
 create_train_tag_values(seq_pt, seq_str, seq_tg, seq_pt_mask,
                         seq_str_mask, batch_size)  # for debug
-
 
 #model = ConditionedModel(gain, n_hidden, n_chars, n_mixt_attention,
 #                         n_mixt_output)
@@ -155,16 +174,27 @@ create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
     model.prediction(pt_ini, seq_str, seq_str_mask,
                      h_ini_pred, k_ini_pred, w_ini_pred, bias=bias)
 
+s_len = seq_h_sampled.shape[0]
 
-discriminator = Discriminator(num_hidden = 800,
+srng = theano.tensor.shared_randomstreams.RandomStreams(99)
+z_index_tf = srng.random_integers(size = (1,), low = 0, high = 250)
+#use z_index_tf[0] to get index.  
+
+d1 = Discriminator(num_hidden = 400,
                               num_features = 400,
                               mb_size = batch_size,
-                              hidden_state_features = T.concatenate([seq_h_sampled[:seq_h_tf.shape[0]], consider_constant(seq_h_tf[:seq_h_sampled.shape[0]])], axis = 1),
+                              hidden_state_features = T.concatenate([seq_h_sampled[0:50], seq_h_tf[0:50]], axis = 1),
                               target = theano.shared(np.asarray([1] * batch_size + [0] * batch_size).astype('int32')))
 
+g_cost = d1.g_cost
 
+d_cost = d1.d_cost
 
-f_sampling = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,bias],
+d_params_lst = [d1.params]
+
+d_classification = d1.classification
+
+f_sampling = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_pred, w_ini_pred,bias, num_steps_sample],
                              [pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen],
                              updates=updates_pred)
 
@@ -175,16 +205,22 @@ f_sampling = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_p
 
 params = model.params
 
-loss_update = loss + generator_lr * discriminator.g_cost
+loss_update = loss + generator_lr * g_cost
 
 print "params", params
 grads = T.grad(loss_update, params)
 grads = clip_norm_gradients(grads)
 
-grads_disc = T.grad(discriminator.d_cost, discriminator.params)
-grads_disc = clip_norm_gradients(grads_disc)
+updates_disc = OrderedDict()
 
-updates_disc = adam(grads_disc, discriminator.params, 0.0001, beta1 = 0.5)
+for d_params in d_params_lst:
+
+    grads_disc = T.grad(d_cost, d_params)
+    grads_disc = clip_norm_gradients(grads_disc)
+
+    updates_disc_1 = adam(grads_disc, d_params, 0.00001, beta1 = 0.5)
+    updates_disc.update(updates_disc_1)
+
 
 if algo == 'adam':
     updates_params = adam(grads, params, 0.0003)
@@ -215,17 +251,20 @@ sampled_h_len.name = "sampled sequence length"
 tf_h_len = seq_h_tf.shape[0]
 tf_h_len.name = "tf sequence length"
 
-classification_real = T.mean(discriminator.classification[:batch_size])
+classification_real = T.mean(d_classification[:batch_size])
 classification_real.name = "p(real)"
 
-classification_fake = T.mean(discriminator.classification[batch_size:])
+classification_fake = T.mean(d_classification[batch_size:])
 classification_fake.name = "p(fake)"
 
-len_c_real = discriminator.classification[batch_size:].shape[0]
+len_c_real = d_classification[batch_size:].shape[0]
 len_c_real.name = "len_c_real"
 
-len_c_fake = discriminator.classification[0:batch_size].shape[0]
+len_c_fake = d_classification[0:batch_size].shape[0]
 len_c_fake.name = "len_c_fake"
+
+accuracy = d1.accuracy
+accuracy.name = "disc accuracy"
 
 print "EXPERIMENT ID", exp_id
 exp_id_shared = theano.shared(np.asarray(exp_id).astype('int32'))
@@ -240,16 +279,19 @@ mean_diff.name = "Sampled-TF Mean Diff"
 std_diff = ((seq_h_sampled[-1].std(0) - seq_h_tf[-1].std(0))**2).sum()
 std_diff.name = "Sampled-TF Var Diff"
 
+g_cost.name = "G_cost"
+d_cost.name = "D_cost"
+
 #[sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared, generator_lr_shared, mean_diff, std_diff]
 
 train_monitor = TrainMonitor(
-    train_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias],
-    [loss] + [sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared, generator_lr_shared, mean_diff, std_diff] + monitoring, updates_all)
+    train_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias, num_steps_sample],
+    [loss] + [sampled_h_len, tf_h_len, classification_real, classification_fake, len_c_real, len_c_fake, exp_id_shared, generator_lr_shared, mean_diff, std_diff, g_cost, d_cost, accuracy] + monitoring, updates_all)
 
     #use updates_all
 
 valid_monitor = ValMonitorHandwriting(
-    'Validation', valid_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias], [loss] + monitoring,
+    'Validation', valid_freq_print, [seq_pt, seq_tg, seq_pt_mask, seq_str, seq_str_mask, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred, bias, num_steps_sample], [loss] + monitoring,
     valid_batch_gen, updates_ini, model, h_ini, k_ini, w_ini, batch_size,
     apply_at_the_start=False)
 
@@ -260,15 +302,15 @@ valid_monitor = ValMonitorHandwriting(
 #    apply_at_the_start=False)
 
 
-sampler = SamplerCond('sampler', train_freq_print, dump_path, 'essai_halfbias',
+sampler = SamplerCond('sampler', 500, dump_path, 'essai_halfbias',
                       model, f_sampling, sample_strings,
                       dict_char2int=char_dict, bias_value=0.5)
 
-sampler_0bias = SamplerCond('sampler', train_freq_print, dump_path, 'essai_0bias',
+sampler_0bias = SamplerCond('sampler', 500, dump_path, 'essai_0bias',
                       model, f_sampling, sample_strings,
                       dict_char2int=char_dict, bias_value=0.0)
 
-sampler_2bias = SamplerCond('sampler', train_freq_print, dump_path, 'essai_2bias',
+sampler_2bias = SamplerCond('sampler', 500, dump_path, 'essai_2bias',
                       model, f_sampling, sample_strings,
                       dict_char2int=char_dict, bias_value=2.0)
 
@@ -277,7 +319,7 @@ sampling_saver = SamplingFunctionSaver(
     f_sampling, char_dict, apply_at_the_start=True)
 
 train_m = Trainer(train_monitor, train_batch_gen,
-                  [valid_monitor, sampling_saver, sampler, sampler_0bias, sampler_2bias], [], num_iterations = 40)
+                  [valid_monitor, sampler, sampler_2bias], [], num_iterations = 2000)
 
 ############
 # TRAINING #
