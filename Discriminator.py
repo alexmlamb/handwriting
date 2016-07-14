@@ -48,45 +48,45 @@ class Discriminator:
         self.mb_size = mb_size
         #self.seq_length = seq_length
 
-        hidden_state_features = dropout(hidden_state_features, 1.0)
+        hidden_state_features = dropout(hidden_state_features, 0.8)
 
         gru_params_1 = init_tparams(param_init_gru(None, {}, prefix = "gru1", dim = num_hidden, nin = num_features))
         gru_params_2 = init_tparams(param_init_gru(None, {}, prefix = "gru2", dim = num_hidden, nin = num_hidden + num_features))
-        gru_params_3 = init_tparams(param_init_gru(None, {}, prefix = "gru3", dim = num_hidden, nin = num_hidden + num_features))
 
 
         gru_1_out = gru_layer(gru_params_1, hidden_state_features, None, prefix = 'gru1', gradient_steps = 100)[0]
         gru_2_out = gru_layer(gru_params_2, T.concatenate([gru_1_out, hidden_state_features], axis = 2), None, prefix = 'gru2', backwards = True, gradient_steps = 100)[0]
-        gru_3_out = gru_layer(gru_params_3, T.concatenate([gru_2_out, hidden_state_features], axis = 2), None, prefix = 'gru3', gradient_steps = 100)[0]
 
         self.gru_1_out = gru_1_out
 
-        final_out_recc = T.mean(gru_3_out, axis = 0)
+        final_out_recc = T.mean(gru_2_out, axis = 0)
 
         h_out_1 = DenseLayer((mb_size*2, num_hidden), num_units = num_hidden, nonlinearity=lasagne.nonlinearities.rectify)
-        h_out_2 = DenseLayer((mb_size*2, num_hidden), num_units = num_hidden, nonlinearity=lasagne.nonlinearities.rectify)
-        h_out_3 = DenseLayer((mb_size*2, num_hidden), num_units = num_hidden, nonlinearity=lasagne.nonlinearities.rectify)
         h_out_4 = DenseLayer((mb_size*2, num_hidden), num_units = 1, nonlinearity=None)
 
-        h_out_1_value = dropout(h_out_1.get_output_for(final_out_recc), 1.0)
-        h_out_2_value = dropout(h_out_2.get_output_for(h_out_1_value), 1.0)
-        h_out_3_value = dropout(h_out_3.get_output_for(h_out_2_value), 1.0)
-        h_out_4_value = h_out_4.get_output_for(h_out_3_value)
+        h_out_1_value = dropout(h_out_1.get_output_for(final_out_recc))
+        h_out_4_value = h_out_4.get_output_for(h_out_1_value)
 
-        raw_y = h_out_4_value#T.clip(h_out_4_value, -10.0, 10.0)
+        raw_y = T.clip(h_out_4_value, -20.0, 20.0)
 
         classification = T.nnet.sigmoid(raw_y)
+
+        self.accuracy = T.mean(T.eq(target, T.gt(classification, 0.5).flatten()))
 
         p_real =  classification[0:mb_size]
         p_gen  = classification[mb_size:mb_size*2]
 
-        self.d_cost_real = bce(p_real, 0.999 * T.ones(p_real.shape)).mean()
-        self.d_cost_gen = bce(p_gen, 0.001 + T.zeros(p_gen.shape)).mean()
-        self.g_cost_d = bce(p_gen, 0.999 * T.ones(p_gen.shape)).mean()
+        self.d_cost_real = bce(p_real, 0.99 * T.ones(p_real.shape)).mean()
+        self.d_cost_gen = bce(p_gen, 0.01 + T.zeros(p_gen.shape)).mean()
+
+        #self.g_cost_real = bce(p_real, 0.1 + T.zeros(p_gen.shape)).mean()
+        self.g_cost_gen = bce(p_gen, 0.99 * T.ones(p_real.shape)).mean()
+
+        self.g_cost = self.g_cost_gen#self.g_cost_real + self.g_cost_gen
         self.d_cost = self.d_cost_real + self.d_cost_gen
-        self.g_cost = self.g_cost_d
+        #if d_cost < 1.0, use g cost.
 
-
+        self.d_cost = T.switch(T.lt(self.accuracy, 0.8),self.d_cost,0.0)
         '''
         gX = gen(Z, *gen_params)
 
@@ -112,8 +112,6 @@ class Discriminator:
 
         self.params = []
         self.params += lasagne.layers.get_all_params(h_out_4,trainable=True)
-        self.params += lasagne.layers.get_all_params(h_out_3,trainable=True)
-        self.params += lasagne.layers.get_all_params(h_out_2,trainable=True)
         self.params += lasagne.layers.get_all_params(h_out_1,trainable=True)
 
         #self.params += h_out_1.getParams() + h_out_2.getParams() + h_out_3.getParams()
@@ -123,7 +121,6 @@ class Discriminator:
 
         self.params += gru_params_1.values()
         self.params += gru_params_2.values()
-        self.params += gru_params_3.values()
 
         '''
         layerParams = c1.getParams()
@@ -143,7 +140,6 @@ class Discriminator:
         #    all_grads[j] = T.switch(T.isnan(all_grads[j]), T.zeros_like(all_grads[j]), all_grads[j])
         #self.updates = lasagne.updates.adam(all_grads, self.params, learning_rate = 0.0001, beta1 = 0.5)
 
-        self.accuracy = T.mean(T.eq(target, T.gt(classification, 0.5).flatten()))
 
         '''
         self.train_func = theano.function(inputs = [x, target, use_one_hot_input_flag,
