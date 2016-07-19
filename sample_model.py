@@ -42,13 +42,17 @@ if __name__ == '__main__':
     beg = time.time()
     pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen = f_sampling(
         pt_ini_mat, cond, cond_mask,
-        h_ini_mat, k_ini_mat, w_ini_mat, options.bias)
+        h_ini_mat, k_ini_mat, w_ini_mat, options.bias, 1000)
     print 'done in {} seconds'.format(time.time()-beg)
     p_gen = np.swapaxes(p_gen, 1, 2)
     mats = [(a_gen, 'alpha'), (k_gen, 'kapa'), (p_gen, 'phi'),
             (w_gen, 'omega')]
     print 'Printing...',
     beg = time.clock()
+
+
+    pt_gen = pt_gen[:,:4,:]
+
     plot_generated_sequences(
         pt_gen, mats,
         mask_gen, folder_path='./',

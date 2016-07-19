@@ -35,12 +35,16 @@ floatX = theano.config.floatX = 'float32'
 # theano.config.compute_test_value = 'raise'
 # np.random.seed(42)
 
+from simon import simon
+
+simonlog = simon.simon(folder = "logs/")
+
 ##########
 # CONFIG #
 ##########
 learning_rate = 0.1
 #generator_lr = 0.01
-generator_lr = 0.0
+generator_lr = 0.01
 
 print "generator lr", generator_lr
 
@@ -62,9 +66,10 @@ algo = 'adam'  # adam, sgd
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/10406114/saved_model.pkl"
 #model_file_load = "saved_model.pkl"
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/33757048/saved_model.pkl"
-#model_file_load = None
+model_file_load = None
 #model_file_load = "/u/lambalex/models/handwriting/handwriting/90207341/saved_model.pkl"
-model_file_load = "/u/lambalex/models/handwriting/handwriting/11151138/saved_model.pkl"
+#model_file_load = "/u/lambalex/models/handwriting/handwriting/11151138/saved_model.pkl"
+#model_file_load = "/u/lambalex/models/handwriting_pf/handwriting/52780486/saved_model.pkl"
 
 num_steps_sample = T.iscalar('num_steps_sample')
 
@@ -98,6 +103,11 @@ char_dict, inv_char_dict = cPickle.load(open('char_dict.pkl', 'r'))
 
 
 if model_file_load is None:
+
+    #model = UnconditionedModel(gain, n_hidden, n_mixtures)
+    #loss, updates, monitoring = model.apply(seq_coord, seq_mask, seq_tg, h_ini)
+
+
     model = ConditionedModel(gain, n_hidden, n_chars, n_mixt_attention,
                          n_mixt_output)
 else:
@@ -174,16 +184,24 @@ create_gen_tag_values(model, pt_ini, h_ini_pred, k_ini_pred, w_ini_pred,
     model.prediction(pt_ini, seq_str, seq_str_mask,
                      h_ini_pred, k_ini_pred, w_ini_pred, bias=bias)
 
+tf_len = seq_h_tf.shape[0]
 s_len = seq_h_sampled.shape[0]
 
 srng = theano.tensor.shared_randomstreams.RandomStreams(99)
-z_index_tf = srng.random_integers(size = (1,), low = 0, high = 250)
+
+z_index_tf = srng.random_integers(size = (1,), low = 0, high = tf_len - 50)
+
+z_index_rf = srng.random_integers(size = (1,), low = 0, high = s_len - 50)
+
 #use z_index_tf[0] to get index.  
+
+tf_ind = z_index_tf[0]
+rf_ind = z_index_rf[0]
 
 d1 = Discriminator(num_hidden = 400,
                               num_features = 400,
                               mb_size = batch_size,
-                              hidden_state_features = T.concatenate([seq_h_sampled[0:50], seq_h_tf[0:50]], axis = 1),
+                              hidden_state_features = T.concatenate([seq_h_sampled[rf_ind:50 + rf_ind], seq_h_tf[tf_ind:tf_ind + 50]], axis = 1),
                               target = theano.shared(np.asarray([1] * batch_size + [0] * batch_size).astype('int32')))
 
 g_cost = d1.g_cost
@@ -202,6 +220,8 @@ f_sampling = theano.function([pt_ini, seq_str, seq_str_mask, h_ini_pred, k_ini_p
 # GRADIENT AND UPDATES #
 ########################
 
+g_cost = T.switch(T.isnan(g_cost), 0.0, g_cost)
+d_cost = T.switch(T.isnan(d_cost), 0.0, d_cost)
 
 params = model.params
 
@@ -233,7 +253,14 @@ else:
 
 updates_all = updates_ini + updates_params + updates_pred + updates_disc
 
-print "type", type(updates_all)
+print type(updates_params), type(updates_pred), type(updates_disc), type(updates_all)
+
+
+#for (update_key, update_val) in updates_all.items():
+#    print "update key", update_key
+#    updates_all[update_key] = T.switch(T.isnan(update_val), update_key, update_val)
+
+
 
 ##############
 # MONITORING #
@@ -319,7 +346,7 @@ sampling_saver = SamplingFunctionSaver(
     f_sampling, char_dict, apply_at_the_start=True)
 
 train_m = Trainer(train_monitor, train_batch_gen,
-                  [valid_monitor, sampler, sampler_2bias], [], num_iterations = 2000)
+                  [valid_monitor, sampler, sampler_2bias, sampling_saver], [], num_iterations = 2000)
 
 ############
 # TRAINING #

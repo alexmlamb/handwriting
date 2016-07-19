@@ -158,7 +158,9 @@ class UnconditionedModel:
 
         return loss, [(h_ini, seq_h[-1])] + scan_updates, monitoring
 
-    def prediction(self, pt_ini, h_ini, bias=.0, n_steps=1000):
+    def prediction(self, pt_ini, h_ini, bias=.0):
+
+        n_steps = 1000
 
         def gru_step(pt_pre, h_pre):
 
@@ -248,7 +250,7 @@ class ConditionedModel:
         return loss, updates + scan_updates, monitoring, seq_h
 
     def prediction(self, pt_ini, seq_str, seq_str_mask,
-                   h_ini, k_ini, w_ini, bias=.0, n_steps=1000):
+                   h_ini, k_ini, w_ini, bias=.0):
         """
         Parameters
         ----------
@@ -265,6 +267,8 @@ class ConditionedModel:
         n_steps: int
             The maximal number of generation steps.
         """
+
+        n_steps = self.num_steps_sample
 
         # Convert the integers representing chars into one-hot encodings
         # seq_str will have shape (seq_length, batch_size, n_chars)

@@ -48,7 +48,8 @@ class Discriminator:
         self.mb_size = mb_size
         #self.seq_length = seq_length
 
-        hidden_state_features = dropout(hidden_state_features, 0.8)
+        #using 0.8
+        hidden_state_features = dropout(hidden_state_features, 1.0)
 
         gru_params_1 = init_tparams(param_init_gru(None, {}, prefix = "gru1", dim = num_hidden, nin = num_features))
         gru_params_2 = init_tparams(param_init_gru(None, {}, prefix = "gru2", dim = num_hidden, nin = num_hidden + num_features))
@@ -62,12 +63,14 @@ class Discriminator:
         final_out_recc = T.mean(gru_2_out, axis = 0)
 
         h_out_1 = DenseLayer((mb_size*2, num_hidden), num_units = num_hidden, nonlinearity=lasagne.nonlinearities.rectify)
+        h_out_2 = DenseLayer((mb_size*2, num_hidden), num_units = num_hidden, nonlinearity=lasagne.nonlinearities.rectify)
         h_out_4 = DenseLayer((mb_size*2, num_hidden), num_units = 1, nonlinearity=None)
 
-        h_out_1_value = dropout(h_out_1.get_output_for(final_out_recc))
-        h_out_4_value = h_out_4.get_output_for(h_out_1_value)
+        h_out_1_value = dropout(h_out_1.get_output_for(final_out_recc), 0.8)
+        h_out_2_value = dropout(h_out_2.get_output_for(h_out_1_value), 0.8)
+        h_out_4_value = h_out_4.get_output_for(h_out_2_value)
 
-        raw_y = T.clip(h_out_4_value, -20.0, 20.0)
+        raw_y = T.clip(h_out_4_value, -10.0, 10.0)
 
         classification = T.nnet.sigmoid(raw_y)
 
@@ -113,6 +116,7 @@ class Discriminator:
         self.params = []
         self.params += lasagne.layers.get_all_params(h_out_4,trainable=True)
         self.params += lasagne.layers.get_all_params(h_out_1,trainable=True)
+        self.params += lasagne.layers.get_all_params(h_out_2,trainable=True)
 
         #self.params += h_out_1.getParams() + h_out_2.getParams() + h_out_3.getParams()
 

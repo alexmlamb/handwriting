@@ -2,7 +2,7 @@ import os
 import h5py
 import numpy as np
 import theano
-
+import random
 
 theano.config.floatX = 'float32'
 floatX = theano.config.floatX
@@ -17,6 +17,8 @@ def load_data(filename='hand_training.hdf5'):
     pt_idx = train_data['pt_idx'][:]
     strings_seq = train_data['str_seq'][:]
     strings_idx = train_data['str_idx'][:]
+
+
 
     train_data.close()
     return pt_seq, pt_idx, strings_seq, strings_idx
@@ -54,18 +56,34 @@ def create_generator(shuffle, batch_size, seq_pt, pt_idx,
             w_ini_mat = np.zeros((n_samples, n_chars), floatX)
             bias = np.asarray(bias_value).astype('float32')
 
+            tf_len = 100
+
+            pt_input = pt_input[:tf_len]
+            pt_tg = pt_tg[:tf_len]
+            pt_mask = pt_mask[:tf_len]
+
+            num_steps_sample = 500
+
+            p = random.uniform(0,1)
+
+            if p < 0.1:
+                num_steps_sample = 500
+            elif p < 0.15:
+                num_steps_sample = 300
+            else:
+                num_steps_sample = 1000
+
             if not chunk:
-                yield (pt_input, pt_tg, pt_mask, str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), True
+                yield (pt_input, pt_tg, pt_mask, str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias, num_steps_sample), True
                 continue
 
             l_seq = pt_input.shape[0]
             for j in range(0, l_seq-chunk-1, chunk):
                 s = slice(j, j+chunk)
-                yield (pt_input[s], pt_tg[s], pt_mask[s], str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), False
+                yield (pt_input[s], pt_tg[s], pt_mask[s], str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias, num_steps_sample), False
             s = slice(j + chunk, None)
 
-
-            yield (pt_input[s], pt_tg[s], pt_mask[s], str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias), True
+            yield (pt_input[s], pt_tg[s], pt_mask[s], str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias, num_steps_sample), True
 
     return generator
 

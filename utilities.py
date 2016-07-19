@@ -50,8 +50,11 @@ def plot_generated_sequences(pt_batch, other_mats=None, pt_mask=None,
             plot_matrix(splot_pt, mat[:, i], mask_term, title)
 
     if folder_path and file_name:
-        fig.savefig(os.path.join(folder_path, file_name + '.png'),
-                    bbox_inches='tight', dpi=200)
+        try:
+            fig.savefig(os.path.join(folder_path, file_name + '.png'),bbox_inches='tight', dpi=200)
+        except:
+            print "TRIED TO PRINT FILE AND FAILED"
+            pass
     if show:
         plt.show()
     plt.close()

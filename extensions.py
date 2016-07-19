@@ -71,9 +71,10 @@ class SamplerCond(Extension):
 
         #raise Exception("This is where pt_ini is being passed into f_sampling")
 
+
         pt_gen, a_gen, k_gen, p_gen, w_gen, mask_gen = self.f_sampling(
                 self.pt_ini_mat, cond, cond_mask,
-                self.h_ini_mat, self.k_ini_mat, self.w_ini_mat, self.bias_value)
+                self.h_ini_mat, self.k_ini_mat, self.w_ini_mat, self.bias_value, 1000)
 
         # plot_seq_pt(pt_gen,
         #            folder_path=self.folder_path,
@@ -90,10 +91,13 @@ class SamplerCond(Extension):
 
         pt_gen = pt_gen[:,:4,:]
 
+        import random
+        r = str(random.randint(0,1000))
+
         plot_generated_sequences(
             pt_gen, mats,
             mask_gen, folder_path=self.folder_path,
-            file_name='{}_'.format(batch_id) + self.file_name)
+            file_name='{}_'.format(batch_id) + self.file_name + "_" + r)
 
         return ['executed']
 
