@@ -62,7 +62,6 @@ def create_generator(shuffle, batch_size, seq_pt, pt_idx,
             pt_tg = pt_tg[:tf_len]
             pt_mask = pt_mask[:tf_len]
 
-            num_steps_sample = 500
 
             p = random.uniform(0,1)
 
@@ -72,6 +71,11 @@ def create_generator(shuffle, batch_size, seq_pt, pt_idx,
                 num_steps_sample = 300
             else:
                 num_steps_sample = 1000
+
+            num_steps_sample = 200
+
+            #UNCONDITIONAL SAMPLING!
+            str = str * 0
 
             if not chunk:
                 yield (pt_input, pt_tg, pt_mask, str, str_mask, pt_ini_mat, h_ini_mat, k_ini_mat, w_ini_mat, bias, num_steps_sample), True

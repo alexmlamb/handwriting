@@ -44,7 +44,7 @@ simonlog = simon.simon(folder = "logs/")
 ##########
 learning_rate = 0.1
 #generator_lr = 0.01
-generator_lr = 0.01
+generator_lr = 0.001
 
 print "generator lr", generator_lr
 
@@ -104,8 +104,6 @@ char_dict, inv_char_dict = cPickle.load(open('char_dict.pkl', 'r'))
 
 if model_file_load is None:
 
-    #model = UnconditionedModel(gain, n_hidden, n_mixtures)
-    #loss, updates, monitoring = model.apply(seq_coord, seq_mask, seq_tg, h_ini)
 
 
     model = ConditionedModel(gain, n_hidden, n_chars, n_mixt_attention,
@@ -198,7 +196,7 @@ z_index_rf = srng.random_integers(size = (1,), low = 0, high = s_len - 50)
 tf_ind = z_index_tf[0]
 rf_ind = z_index_rf[0]
 
-d1 = Discriminator(num_hidden = 400,
+d1 = Discriminator(num_hidden = 800,
                               num_features = 400,
                               mb_size = batch_size,
                               hidden_state_features = T.concatenate([seq_h_sampled[rf_ind:50 + rf_ind], seq_h_tf[tf_ind:tf_ind + 50]], axis = 1),
@@ -238,9 +236,9 @@ for d_params in d_params_lst:
     grads_disc = T.grad(d_cost, d_params)
     grads_disc = clip_norm_gradients(grads_disc)
 
-    updates_disc_1 = adam(grads_disc, d_params, 0.00001, beta1 = 0.5)
+    #00001, 0.5
+    updates_disc_1 = adam(grads_disc, d_params, 0.0001, beta1 = 0.5)
     updates_disc.update(updates_disc_1)
-
 
 if algo == 'adam':
     updates_params = adam(grads, params, 0.0003)

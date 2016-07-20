@@ -66,8 +66,8 @@ class Discriminator:
         h_out_2 = DenseLayer((mb_size*2, num_hidden), num_units = num_hidden, nonlinearity=lasagne.nonlinearities.rectify)
         h_out_4 = DenseLayer((mb_size*2, num_hidden), num_units = 1, nonlinearity=None)
 
-        h_out_1_value = dropout(h_out_1.get_output_for(final_out_recc), 0.8)
-        h_out_2_value = dropout(h_out_2.get_output_for(h_out_1_value), 0.8)
+        h_out_1_value = dropout(h_out_1.get_output_for(final_out_recc), 1.0)
+        h_out_2_value = dropout(h_out_2.get_output_for(h_out_1_value), 1.0)
         h_out_4_value = h_out_4.get_output_for(h_out_2_value)
 
         raw_y = T.clip(h_out_4_value, -10.0, 10.0)
@@ -79,17 +79,21 @@ class Discriminator:
         p_real =  classification[0:mb_size]
         p_gen  = classification[mb_size:mb_size*2]
 
-        self.d_cost_real = bce(p_real, 0.99 * T.ones(p_real.shape)).mean()
-        self.d_cost_gen = bce(p_gen, 0.01 + T.zeros(p_gen.shape)).mean()
+        self.d_cost_real = bce(p_real, T.ones(p_real.shape)).mean()
+        self.d_cost_gen = bce(p_gen, T.zeros(p_gen.shape)).mean()
 
-        #self.g_cost_real = bce(p_real, 0.1 + T.zeros(p_gen.shape)).mean()
-        self.g_cost_gen = bce(p_gen, 0.99 * T.ones(p_real.shape)).mean()
+        self.g_cost_real = bce(p_real, T.zeros(p_gen.shape)).mean()
+        self.g_cost_gen = bce(p_gen, T.ones(p_real.shape)).mean()
 
-        self.g_cost = self.g_cost_gen#self.g_cost_real + self.g_cost_gen
+        #self.g_cost = self.g_cost_gen
+        self.g_cost = self.g_cost_real + self.g_cost_gen
+        
+        print "pulling both TF and PF togeher"
+        
         self.d_cost = self.d_cost_real + self.d_cost_gen
         #if d_cost < 1.0, use g cost.
 
-        self.d_cost = T.switch(T.lt(self.accuracy, 0.8),self.d_cost,0.0)
+        self.d_cost = T.switch(T.gt(self.accuracy, 0.95) * T.gt(p_real.mean(), 0.99) * T.lt(p_gen.mean(), 0.01), 0.0, self.d_cost)
         '''
         gX = gen(Z, *gen_params)
 
